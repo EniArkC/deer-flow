@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import threading
 from typing import Any
 
@@ -44,6 +45,7 @@ class FeishuChannel(Channel):
         self._thread: threading.Thread | None = None
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self._api_client = None
+        self._bot_open_id: str | None = None
         self._CreateMessageReactionRequest = None
         self._CreateMessageReactionRequestBody = None
         self._Emoji = None
@@ -107,6 +109,14 @@ class FeishuChannel(Channel):
 
         self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
         logger.info("[Feishu] using domain: %s", domain)
+
+        # Fetch bot's own open_id so we can detect @mentions in group chats.
+        self._bot_open_id = self._fetch_bot_open_id()
+        if self._bot_open_id:
+            logger.info("[Feishu] bot open_id: %s", self._bot_open_id)
+        else:
+            logger.warning("[Feishu] could not fetch bot open_id — group @mention filtering will be disabled")
+
         self._main_loop = asyncio.get_event_loop()
 
         self._running = True
@@ -454,6 +464,50 @@ class FeishuChannel(Channel):
         except Exception:
             pass
 
+    # -- bot identity & @mention filtering -----------------------------------
+
+    def _fetch_bot_open_id(self) -> str | None:
+        """Fetch the bot's own open_id via ``GET /open-apis/bot/v3/info``."""
+        if not self._api_client:
+            return None
+        try:
+            from lark_oapi.core.enum import AccessTokenType, HttpMethod
+            from lark_oapi.core.model.base_request import BaseRequest
+
+            request = BaseRequest.builder().http_method(HttpMethod.GET).uri("/open-apis/bot/v3/info").token_types({AccessTokenType.TENANT}).build()
+            response = self._api_client.request(request)
+            if response.success():
+                raw_content = response.raw.content if response.raw else None
+                if raw_content:
+                    data = json.loads(raw_content)
+                    return data.get("bot", {}).get("open_id") or None
+            logger.warning("[Feishu] bot info request failed: code=%s msg=%s", response.code, response.msg)
+        except Exception:
+            logger.exception("[Feishu] failed to fetch bot info")
+        return None
+
+    def _is_bot_mentioned(self, message) -> bool:
+        """Check whether the bot is @mentioned in the given message."""
+        if not self._bot_open_id:
+            # Cannot determine — fall back to allowing the message
+            return True
+        mentions = getattr(message, "mentions", None) or []
+        for mention in mentions:
+            mention_id = getattr(mention, "id", None)
+            if mention_id is None:
+                continue
+            open_id = getattr(mention_id, "open_id", None)
+            if open_id == self._bot_open_id:
+                return True
+        return False
+
+    @staticmethod
+    def _strip_mention_placeholders(text: str) -> str:
+        """Remove Feishu @mention placeholders like ``@_user_1`` from the text."""
+        return re.sub(r"@_user_\d+", "", text).strip()
+
+    # -- inbound handling ----------------------------------------------------
+
     async def _prepare_inbound(self, msg_id: str, inbound) -> None:
         """Kick off Feishu side effects without delaying inbound dispatch."""
         reaction_task = asyncio.create_task(self._add_reaction(msg_id, "OK"))
@@ -469,6 +523,12 @@ class FeishuChannel(Channel):
             chat_id = message.chat_id
             msg_id = message.message_id
             sender_id = event.event.sender.sender_id.open_id
+            chat_type = getattr(message, "chat_type", None) or ""
+
+            # In group chats, only respond when the bot is explicitly @mentioned.
+            if chat_type == "group" and not self._is_bot_mentioned(message):
+                logger.info("[Feishu] group message without bot @mention, ignoring (chat_id=%s, msg_id=%s)", chat_id, msg_id)
+                return
 
             # root_id is set when the message is a reply within a Feishu thread.
             # Use it as topic_id so all replies share the same DeerFlow thread.
@@ -501,7 +561,7 @@ class FeishuChannel(Channel):
                 text = "\n\n".join(text_paragraphs)
             else:
                 text = ""
-            text = text.strip()
+            text = self._strip_mention_placeholders(text)
 
             logger.info(
                 "[Feishu] parsed message: chat_id=%s, msg_id=%s, root_id=%s, sender=%s, text=%r",

@@ -7,6 +7,7 @@ from deerflow.reflection import resolve_variable
 from deerflow.sandbox.security import is_host_bash_allowed
 from deerflow.tools.builtins import (
     ask_clarification_tool,
+    chromadb_ingest_tool,
     chromadb_query_tool,
     chromadb_upsert_tool,
     present_file_tool,
@@ -22,6 +23,7 @@ BUILTIN_TOOLS = [
     ask_clarification_tool,
     chromadb_upsert_tool,
     chromadb_query_tool,
+    chromadb_ingest_tool,
 ]
 
 SUBAGENT_TOOLS = [

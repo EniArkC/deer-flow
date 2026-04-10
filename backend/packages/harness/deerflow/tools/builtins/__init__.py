@@ -1,5 +1,6 @@
 from .clarification_tool import ask_clarification_tool
 from .chromadb_tool import chromadb_query_tool, chromadb_upsert_tool
+from .document_parse_tool import chromadb_ingest_tool
 from .present_file_tool import present_file_tool
 from .setup_agent_tool import setup_agent
 from .task_tool import task_tool
@@ -11,6 +12,7 @@ __all__ = [
     "ask_clarification_tool",
     "chromadb_upsert_tool",
     "chromadb_query_tool",
+    "chromadb_ingest_tool",
     "view_image_tool",
     "task_tool",
 ]

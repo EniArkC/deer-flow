@@ -155,6 +155,7 @@ services:
       - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_ROOT}/backend/.deer-flow
       - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_ROOT}/skills
       - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      - CHROMA_URL=http://chromadb:8000
     env_file:
       - ../.env
     extra_hosts:
@@ -209,6 +210,7 @@ services:
       - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_ROOT}/backend/.deer-flow
       - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_ROOT}/skills
       - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      - CHROMA_URL=http://chromadb:8000
     env_file:
       - ../.env
     extra_hosts:
@@ -218,11 +220,27 @@ services:
       - deer-flow-dev
     restart: unless-stopped
 
+  #chromadb
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: deer-flow-chromadb
+    ports:
+      - "8003:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
 volumes:
   # Persist .venv across container restarts so dependencies installed during
   # image build are not shadowed by the host backend/ directory mount.
   gateway-venv:
   langgraph-venv:
+  chroma-data:
 
 networks:
   deer-flow-dev:

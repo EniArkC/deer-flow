@@ -2,13 +2,13 @@
 
 用法:
     # 清空所有 collection
-    PYTHONPATH=packages/harness python scripts/clear_chromadb.py
+    PYTHONPATH=packages/harness uv run python scripts/clear_chromadb.py
 
     # 只删除指定 collection
-    PYTHONPATH=packages/harness python scripts/clear_chromadb.py --collection my_kb
+    PYTHONPATH=packages/harness uv runpython scripts/clear_chromadb.py --collection my_kb
 
     # 跳过确认提示（用于脚本/CI）
-    PYTHONPATH=packages/harness python scripts/clear_chromadb.py --yes
+    PYTHONPATH=packages/harness uv runpython scripts/clear_chromadb.py --yes
 
 环境变量:
     CHROMA_URL          完整 URL，如 http://chromadb:8000

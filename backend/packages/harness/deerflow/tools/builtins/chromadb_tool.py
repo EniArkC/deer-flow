@@ -32,6 +32,52 @@ def _connection_info(config: ChromaConnectionConfig) -> dict[str, Any]:
 
 
 # ============================================================
+# 工具零：chromadb_list_collections —— 列出所有 collection
+# ============================================================
+
+
+@tool("chromadb_list_collections", parse_docstring=True)
+def chromadb_list_collections_tool() -> str:
+    """List all collections in the ChromaDB vector database with their document counts.
+
+    Use this tool BEFORE querying or upserting to discover which collections exist
+    and how many documents each contains. This helps you choose the correct
+    collection_name for chromadb_query or chromadb_upsert.
+
+    When to use this tool:
+    - Before performing a semantic search, to find the right collection name
+    - When the user asks what knowledge bases or document collections are available
+    - When unsure which collection to query
+
+    Returns a JSON list of collections with their names and document counts.
+    """
+    try:
+        manager = _get_manager()
+        collections = manager.list_collections()
+    except Exception as exc:
+        return f"Error listing ChromaDB collections: {exc}"
+
+    items = []
+    for c in collections:
+        name = c.name if hasattr(c, "name") else str(c)
+        try:
+            count = manager.client.get_collection(name).count()
+        except Exception:
+            count = -1
+        items.append({"name": name, "document_count": count})
+
+    return json.dumps(
+        {
+            "status": "ok",
+            "connection": _connection_info(manager.config),
+            "total_collections": len(items),
+            "collections": items,
+        },
+        ensure_ascii=False,
+    )
+
+
+# ============================================================
 # 工具一：chromadb_upsert —— 向 ChromaDB 写入/更新文档
 # ============================================================
 

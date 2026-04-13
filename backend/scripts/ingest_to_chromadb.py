@@ -7,20 +7,22 @@
     #先把要存的文档拷贝到容器中（宿主机中执行，容器卸载之后，拷贝的临时文件会删除）
     docker cp ~/agentdev/TD_Docs_1 deer-flow-gateway:/tmp/docs
 
+    #(python虚拟环境需要用backend/.venv/bin/python)
+    
     # 导入整个目录
-    PYTHONPATH=packages/harness uv run python scripts/ingest_to_chromadb.py /path/to/docs
+    uv run scripts/ingest_to_chromadb.py /tmp/docs
 
     # 指定 collection
-    PYTHONPATH=packages/harness uv run python scripts/ingest_to_chromadb.py /path/to/docs --collection my_kb
+    uv run scripts/ingest_to_chromadb.py /tmp/docs --collection my_kb
 
     # 导入单个文件
-    PYTHONPATH=packages/harness uv run python scripts/ingest_to_chromadb.py /path/to/file.pdf
+    uv run scripts/ingest_to_chromadb.py /tmp/docs/file.pdf
 
     # 自定义分块参数
-    PYTHONPATH=packages/harness uv run python scripts/ingest_to_chromadb.py /path/to/docs --chunk-size 1000 --chunk-overlap 100
+    uv run scripts/ingest_to_chromadb.py /tmp/docs--chunk-size 1000 --chunk-overlap 100
 
     # 查询数据库记录的内容：
-    cd /app/backend && env | grep CHROMA; PYTHONPATH=packages/harness uv run python -c "from deerflow.chromadb import ChromaDBManager; m = ChromaDBManager.from_os_env(); print('连接:', m.check_connection()); [print(f'  collection: {c.name if hasattr(c,\"name\") else c}, 文档数: {m.client.get_collection(c.name if hasattr(c,\"name\") else c).count()}') for c in m.list_collections()]"
+    cd /app/backend && env | grep CHROMA; uv run python -c "from deerflow.chromadb import ChromaDBManager; m = ChromaDBManager.from_os_env(); print('连接:', m.check_connection()); [print(f'  collection: {c.name if hasattr(c,\"name\") else c}, 文档数: {m.client.get_collection(c.name if hasattr(c,\"name\") else c).count()}') for c in m.list_collections()]"
 
 
 环境变量:

@@ -1,14 +1,16 @@
 """清空 ChromaDB 数据库（删除全部或指定 collection）。
 
 用法:
+    #(python虚拟环境需要用backend/.venv/bin/python)
+    
     # 清空所有 collection
-    PYTHONPATH=packages/harness uv run python scripts/clear_chromadb.py
+    uv run scripts/clear_chromadb.py
 
     # 只删除指定 collection
-    PYTHONPATH=packages/harness uv runpython scripts/clear_chromadb.py --collection my_kb
+    uv run scripts/clear_chromadb.py --collection my_kb
 
     # 跳过确认提示（用于脚本/CI）
-    PYTHONPATH=packages/harness uv runpython scripts/clear_chromadb.py --yes
+    uv run scripts/clear_chromadb.py --yes
 
 环境变量:
     CHROMA_URL          完整 URL，如 http://chromadb:8000

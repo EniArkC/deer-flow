@@ -25,6 +25,7 @@ import argparse
 import sys
 
 from deerflow.chromadb import ChromaDBManager
+from chromadb_registry import remove_all_collections, remove_collection
 
 
 def main():
@@ -74,10 +75,15 @@ def main():
     for name in targets:
         try:
             manager.delete_collection(name)
+            remove_collection(name)
             print(f"  [OK] 已删除 {name}")
             deleted += 1
         except Exception as exc:
             print(f"  [FAIL] 删除 {name} 失败: {exc}")
+
+    # 如果删除了全部 collection，清空整个注册表
+    if not args.collection and deleted == len(targets):
+        remove_all_collections()
 
     print(f"\n完成! 已删除 {deleted}/{len(targets)} 个 collection。")
 

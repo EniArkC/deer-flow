@@ -36,6 +36,7 @@
 
 import argparse
 import hashlib
+import io
 import re
 import sys
 from pathlib import Path
@@ -43,6 +44,7 @@ from pathlib import Path
 from markitdown import MarkItDown
 
 from deerflow.chromadb import ChromaDBManager
+from chromadb_registry import is_registered, register_file
 
 # markitdown 输出的 Markdown 图片语法：![alt](src)
 # 包括普通路径和 data:image base64 两种形式
@@ -62,9 +64,28 @@ def replace_images(text: str) -> str:
 
 
 def convert_to_text(file_path: Path) -> str:
-    """用 markitdown 将文档转为纯文本，图片替换为 [Image] 占位符。"""
+    """用 markitdown 将文档转为纯文本，图片替换为 [Image] 占位符。
+
+    转换过程中 pdfminer 等库会输出大量重复警告到 stderr，
+    这里捕获 stderr 并对每个文件只显示去重后的警告各一次。
+    """
     md = MarkItDown()
-    result = md.convert(str(file_path))
+    old_stderr = sys.stderr
+    captured = io.StringIO()
+    sys.stderr = captured
+    try:
+        result = md.convert(str(file_path))
+    finally:
+        sys.stderr = old_stderr
+
+    # 将捕获的 stderr 去重后输出（每种警告只显示一次）
+    seen: set[str] = set()
+    for line in captured.getvalue().splitlines():
+        stripped = line.strip()
+        if stripped and stripped not in seen:
+            seen.add(stripped)
+            print(f"  [WARN] {stripped}", file=sys.stderr)
+
     text = result.text_content or ""
     return replace_images(text)
 
@@ -97,9 +118,9 @@ def collect_files(path: Path) -> list[Path]:
         if path.suffix.lower() in SUPPORTED_EXTENSIONS:
             return [path]
         return []
-    files = []
+    files: set[Path] = set()
     for ext in SUPPORTED_EXTENSIONS:
-        files.extend(path.rglob(f"*{ext}"))
+        files.update(path.rglob(f"*{ext}"))
     return sorted(files)
 
 
@@ -190,14 +211,23 @@ def main():
     # 逐文件处理
     success_count = 0
     fail_count = 0
+    skip_count = 0
     total_chunks = 0
 
     for i, file_path in enumerate(files, 1):
         print(f"[{i}/{len(files)}] {file_path.name}")
+
+        # 检查注册表，跳过已导入的同名文档
+        if is_registered(args.collection, file_path.name):
+            print(f"  [SKIP] 已存在于 collection '{args.collection}'，跳过")
+            skip_count += 1
+            continue
+
         ok, chunks = ingest_file(file_path, manager, args.collection, args.chunk_size, args.chunk_overlap)
         if ok:
             success_count += 1
             total_chunks += chunks
+            register_file(args.collection, file_path.name)
             print(f"  [OK] {chunks} 个分块已写入")
         else:
             fail_count += 1
@@ -205,7 +235,7 @@ def main():
     # 统计
     print()
     print("=" * 40)
-    print(f"完成! 成功: {success_count}, 失败: {fail_count}, 总分块数: {total_chunks}")
+    print(f"完成! 成功: {success_count}, 跳过: {skip_count}, 失败: {fail_count}, 总分块数: {total_chunks}")
 
 
 if __name__ == "__main__":

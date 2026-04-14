@@ -404,7 +404,7 @@ class ChannelManager:
             self._default_session.get("context"),
             channel_layer.get("context"),
             user_layer.get("context"),
-            {"thread_id": thread_id},
+            {"thread_id": thread_id, "channel_name": msg.channel_name, "user_id": msg.user_id},
         )
 
         # Custom agents are implemented as lead_agent + agent_name context.

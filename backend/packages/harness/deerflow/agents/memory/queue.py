@@ -21,6 +21,8 @@ class ConversationContext:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     agent_name: str | None = None
     correction_detected: bool = False
+    channel_name: str | None = None
+    user_id: str | None = None
 
 
 class MemoryUpdateQueue:
@@ -44,6 +46,8 @@ class MemoryUpdateQueue:
         messages: list[Any],
         agent_name: str | None = None,
         correction_detected: bool = False,
+        channel_name: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         """Add a conversation to the update queue.
 
@@ -52,6 +56,8 @@ class MemoryUpdateQueue:
             messages: The conversation messages.
             agent_name: If provided, memory is stored per-agent. If None, uses global memory.
             correction_detected: Whether recent turns include an explicit correction signal.
+            channel_name: IM channel name (e.g. "feishu") for per-user routing.
+            user_id: Platform user ID for per-user memory isolation.
         """
         config = get_memory_config()
         if not config.enabled:
@@ -68,6 +74,8 @@ class MemoryUpdateQueue:
                 messages=messages,
                 agent_name=agent_name,
                 correction_detected=merged_correction_detected,
+                channel_name=channel_name,
+                user_id=user_id,
             )
 
             # Check if this thread already has a pending update
@@ -130,6 +138,8 @@ class MemoryUpdateQueue:
                         thread_id=context.thread_id,
                         agent_name=context.agent_name,
                         correction_detected=context.correction_detected,
+                        channel_name=context.channel_name,
+                        user_id=context.user_id,
                     )
                     if success:
                         logger.info("Memory updated successfully for thread %s", context.thread_id)

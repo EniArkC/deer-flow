@@ -348,24 +348,26 @@ combined with a FastAPI gateway for REST API access [citation:FastAPI](https://f
 """
 
 
-def _get_memory_context(agent_name: str | None = None) -> str:
+def _get_memory_context(agent_name: str | None = None, channel_name: str | None = None, user_id: str | None = None) -> str:
     """Get memory context for injection into system prompt.
 
     Args:
         agent_name: If provided, loads per-agent memory. If None, loads global memory.
+        channel_name: IM channel name for per-user memory routing.
+        user_id: Platform user ID for per-user memory isolation.
 
     Returns:
         Formatted memory context string wrapped in XML tags, or empty string if disabled.
     """
     try:
-        from deerflow.agents.memory import format_memory_for_injection, get_memory_data
+        from deerflow.agents.memory import format_memory_for_injection, get_memory_data_for_context
         from deerflow.config.memory_config import get_memory_config
 
         config = get_memory_config()
         if not config.enabled or not config.injection_enabled:
             return ""
 
-        memory_data = get_memory_data(agent_name)
+        memory_data = get_memory_data_for_context(agent_name, channel_name=channel_name, user_id=user_id)
         memory_content = format_memory_for_injection(memory_data, max_tokens=config.max_injection_tokens)
 
         if not memory_content.strip():
@@ -503,9 +505,9 @@ def _build_custom_mounts_section() -> str:
     return f"\n**Custom Mounted Directories:**\n{mounts_list}\n- If the user needs files outside `/mnt/user-data`, use these absolute container paths directly when they match the requested directory"
 
 
-def apply_prompt_template(subagent_enabled: bool = False, max_concurrent_subagents: int = 3, *, agent_name: str | None = None, available_skills: set[str] | None = None) -> str:
-    # Get memory context
-    memory_context = _get_memory_context(agent_name)
+def apply_prompt_template(subagent_enabled: bool = False, max_concurrent_subagents: int = 3, *, agent_name: str | None = None, available_skills: set[str] | None = None, channel_name: str | None = None, user_id: str | None = None) -> str:
+    # Get memory context (routes to per-user memory when applicable)
+    memory_context = _get_memory_context(agent_name, channel_name=channel_name, user_id=user_id)
 
     # Include subagent section only if enabled (from runtime parameter)
     n = max_concurrent_subagents

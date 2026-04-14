@@ -169,13 +169,18 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
             return None
 
         # Get thread ID from runtime context first, then fall back to LangGraph's configurable metadata
-        thread_id = runtime.context.get("thread_id") if runtime.context else None
+        ctx = runtime.context or {}
+        thread_id = ctx.get("thread_id")
         if thread_id is None:
             config_data = get_config()
             thread_id = config_data.get("configurable", {}).get("thread_id")
         if not thread_id:
             logger.debug("No thread_id in context, skipping memory update")
             return None
+
+        # Extract channel/user context for per-user memory routing
+        channel_name: str | None = ctx.get("channel_name")
+        user_id: str | None = ctx.get("user_id")
 
         # Get messages from state
         messages = state.get("messages", [])
@@ -202,6 +207,8 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
             messages=filtered_messages,
             agent_name=self._agent_name,
             correction_detected=correction_detected,
+            channel_name=channel_name,
+            user_id=user_id,
         )
 
         return None

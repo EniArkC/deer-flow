@@ -12,7 +12,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 5
+config_version: 6
 
 # ============================================================================
 # Logging
@@ -556,13 +556,26 @@ summarization:
 # Stores user context and conversation history for personalized responses
 memory:
   enabled: true
-  storage_path: memory.json # Path relative to backend directory
+  storage_path: "" # Empty = memory/global.json (recommended). Legacy memory.json is auto-migrated.
   debounce_seconds: 30 # Wait time before processing queued updates
   model_name: null # Use default model
   max_facts: 100 # Maximum number of facts to store
   fact_confidence_threshold: 0.7 # Minimum confidence for storing facts
   injection_enabled: true # Whether to inject memory into system prompt
   max_injection_tokens: 2000 # Maximum tokens for memory injection
+
+  # Per-user memory isolation
+  # When enabled for a channel, each user gets their own memory file
+  # (e.g. memory/feishu/{open_id}.json) instead of sharing global memory.
+  per_user:
+    feishu: false # Set to true to enable per-user memory for Feishu
+
+  # Scheduled memory cleanup
+  # Periodically clears per-user memory files (and optionally global memory).
+  cleanup:
+    enabled: false
+    interval_hours: 168 # Cleanup interval (default: 168 = 7 days)
+    apply_to_global: false # Whether to also clear global memory
 
 # ============================================================================
 # Checkpointer Configuration

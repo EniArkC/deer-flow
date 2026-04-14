@@ -7,6 +7,8 @@ from pathlib import Path, PureWindowsPath
 VIRTUAL_PATH_PREFIX = "/mnt/user-data"
 
 _SAFE_THREAD_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+_SAFE_CHANNEL_NAME_RE = re.compile(r"^[a-z][a-z0-9_\-]*$")
+_SAFE_USER_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 def _validate_thread_id(thread_id: str) -> str:
@@ -14,6 +16,20 @@ def _validate_thread_id(thread_id: str) -> str:
     if not _SAFE_THREAD_ID_RE.match(thread_id):
         raise ValueError(f"Invalid thread_id {thread_id!r}: only alphanumeric characters, hyphens, and underscores are allowed.")
     return thread_id
+
+
+def _validate_channel_name(channel_name: str) -> str:
+    """Validate a channel name before using it in filesystem paths."""
+    if not _SAFE_CHANNEL_NAME_RE.match(channel_name):
+        raise ValueError(f"Invalid channel_name {channel_name!r}: must start with a lowercase letter and contain only lowercase letters, digits, hyphens, and underscores.")
+    return channel_name
+
+
+def _validate_user_id(user_id: str) -> str:
+    """Validate a user ID before using it in filesystem paths."""
+    if not _SAFE_USER_ID_RE.match(user_id):
+        raise ValueError(f"Invalid user_id {user_id!r}: only alphanumeric characters, hyphens, and underscores are allowed.")
+    return user_id
 
 
 def _join_host_path(base: str, *parts: str) -> str:
@@ -112,8 +128,30 @@ class Paths:
 
     @property
     def memory_file(self) -> Path:
-        """Path to the persisted memory file: `{base_dir}/memory.json`."""
+        """Path to the legacy memory file: `{base_dir}/memory.json`.
+
+        Kept for backward compatibility and migration detection.
+        New code should use :pyattr:`global_memory_file` instead.
+        """
         return self.base_dir / "memory.json"
+
+    @property
+    def memory_dir(self) -> Path:
+        """Root directory for all memory files: `{base_dir}/memory/`."""
+        return self.base_dir / "memory"
+
+    @property
+    def global_memory_file(self) -> Path:
+        """Path to the shared global memory: `{base_dir}/memory/global.json`."""
+        return self.memory_dir / "global.json"
+
+    def channel_memory_dir(self, channel_name: str) -> Path:
+        """Directory for channel-specific per-user memory: `{base_dir}/memory/{channel}/`."""
+        return self.memory_dir / _validate_channel_name(channel_name)
+
+    def user_memory_file(self, channel_name: str, user_id: str) -> Path:
+        """Per-user memory file: `{base_dir}/memory/{channel}/{user_id}.json`."""
+        return self.channel_memory_dir(channel_name) / f"{_validate_user_id(user_id)}.json"
 
     @property
     def user_md_file(self) -> Path:

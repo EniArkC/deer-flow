@@ -13,7 +13,7 @@ from deerflow.agents.memory.prompt import (
     format_conversation_for_update,
 )
 from deerflow.agents.memory.storage import create_empty_memory, get_memory_storage
-from deerflow.config.memory_config import get_memory_config
+from deerflow.config.memory_config import get_memory_config, is_per_user_memory_enabled
 from deerflow.models import create_chat_model
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,22 @@ def _save_memory_to_file(memory_data: dict[str, Any], agent_name: str | None = N
 
 def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
     """Get the current memory data via storage provider."""
+    return get_memory_storage().load(agent_name)
+
+
+def get_memory_data_for_context(
+    agent_name: str | None = None,
+    channel_name: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Get memory data, routing to per-user storage when configured.
+
+    If *channel_name* has per-user memory enabled and *user_id* is provided,
+    the per-user file is loaded.  Otherwise, falls back to
+    agent-level or global memory.
+    """
+    if channel_name and user_id and is_per_user_memory_enabled(channel_name):
+        return get_memory_storage().load_user_memory(channel_name, user_id)
     return get_memory_storage().load(agent_name)
 
 
@@ -272,6 +288,8 @@ class MemoryUpdater:
         thread_id: str | None = None,
         agent_name: str | None = None,
         correction_detected: bool = False,
+        channel_name: str | None = None,
+        user_id: str | None = None,
     ) -> bool:
         """Update memory based on conversation messages.
 
@@ -280,6 +298,8 @@ class MemoryUpdater:
             thread_id: Optional thread ID for tracking source.
             agent_name: If provided, updates per-agent memory. If None, updates global memory.
             correction_detected: Whether recent turns include an explicit correction signal.
+            channel_name: IM channel name for per-user routing.
+            user_id: Platform user ID for per-user memory isolation.
 
         Returns:
             True if update was successful, False otherwise.
@@ -291,9 +311,15 @@ class MemoryUpdater:
         if not messages:
             return False
 
+        # Determine whether to use per-user storage
+        use_per_user = bool(channel_name and user_id and is_per_user_memory_enabled(channel_name))
+
         try:
-            # Get current memory
-            current_memory = get_memory_data(agent_name)
+            # Get current memory from the appropriate source
+            if use_per_user:
+                current_memory = get_memory_storage().load_user_memory(channel_name, user_id)
+            else:
+                current_memory = get_memory_data(agent_name)
 
             # Format conversation for prompt
             conversation_text = format_conversation_for_update(messages)
@@ -339,7 +365,9 @@ class MemoryUpdater:
             # try (and fail) to locate those files in subsequent conversations.
             updated_memory = _strip_upload_mentions_from_memory(updated_memory)
 
-            # Save
+            # Save to the appropriate storage target
+            if use_per_user:
+                return get_memory_storage().save_user_memory(updated_memory, channel_name, user_id)
             return get_memory_storage().save(updated_memory, agent_name)
 
         except json.JSONDecodeError as e:
@@ -441,17 +469,21 @@ def update_memory_from_conversation(
     thread_id: str | None = None,
     agent_name: str | None = None,
     correction_detected: bool = False,
+    channel_name: str | None = None,
+    user_id: str | None = None,
 ) -> bool:
     """Convenience function to update memory from a conversation.
 
     Args:
         messages: List of conversation messages.
         thread_id: Optional thread ID.
-        agent_name: If provided, updates per-agent memory. If None, updates global memory.
+        agent_name: If provided, updates per-agent memory. If None, uses global memory.
         correction_detected: Whether recent turns include an explicit correction signal.
+        channel_name: IM channel name for per-user routing.
+        user_id: Platform user ID for per-user memory isolation.
 
     Returns:
         True if successful, False otherwise.
     """
     updater = MemoryUpdater()
-    return updater.update_memory(messages, thread_id, agent_name, correction_detected)
+    return updater.update_memory(messages, thread_id, agent_name, correction_detected, channel_name=channel_name, user_id=user_id)

@@ -324,31 +324,51 @@ Bridges external messaging platforms (Feishu, Slack, Telegram) to the DeerFlow a
 ### Memory System (`packages/harness/deerflow/agents/memory/`)
 
 **Components**:
+- `storage.py` - `MemoryStorage` abstract base + `FileMemoryStorage` with per-user support and legacy migration
 - `updater.py` - LLM-based memory updates with fact extraction, whitespace-normalized fact deduplication (trims leading/trailing whitespace before comparing), and atomic file I/O
 - `queue.py` - Debounced update queue (per-thread deduplication, configurable wait time)
 - `prompt.py` - Prompt templates for memory updates
+- `cleanup.py` - `MemoryCleanupScheduler` background daemon that periodically clears per-user (and optionally global) memory
 
-**Data Structure** (stored in `backend/.deer-flow/memory.json`):
+**Storage Layout**:
+```
+.deer-flow/
+├── memory.json              (legacy — auto-migrated to memory/global.json on first access)
+└── memory/
+    ├── global.json           (shared memory for web UI + platforms without per-user)
+    └── feishu/
+        └── {open_id}.json    (per-user memory for Feishu users)
+```
+
+**Per-User Memory**: Channels can be configured to store memory per-user instead of using the shared global memory. When per-user is enabled for a channel, each user's memory is isolated in `memory/{channel}/{user_id}.json`. The `channel_name` and `user_id` are passed from `ChannelManager` → `runtime.context` → `MemoryMiddleware` → `MemoryUpdateQueue` → `MemoryUpdater`, and also to `apply_prompt_template()` for injection routing. Currently only Feishu is supported (via `config.yaml` → `memory.per_user.feishu`).
+
+**Data Structure** (stored in `memory/global.json` or `memory/{channel}/{user_id}.json`):
 - **User Context**: `workContext`, `personalContext`, `topOfMind` (1-3 sentence summaries)
 - **History**: `recentMonths`, `earlierContext`, `longTermBackground`
 - **Facts**: Discrete facts with `id`, `content`, `category` (preference/knowledge/context/behavior/goal), `confidence` (0-1), `createdAt`, `source`
 
 **Workflow**:
-1. `MemoryMiddleware` filters messages (user inputs + final AI responses) and queues conversation
+1. `MemoryMiddleware` filters messages (user inputs + final AI responses), extracts `channel_name`/`user_id` from runtime context, and queues conversation
 2. Queue debounces (30s default), batches updates, deduplicates per-thread
 3. Background thread invokes LLM to extract context updates and facts
 4. Applies updates atomically (temp file + rename) with cache invalidation, skipping duplicate fact content before append
-5. Next interaction injects top 15 facts + context into `<memory>` tags in system prompt
+5. Saves to per-user file (if per-user enabled for the channel) or global file
+6. Next interaction injects top 15 facts + context into `<memory>` tags in system prompt from the appropriate memory file
 
 Focused regression coverage for the updater lives in `backend/tests/test_memory_updater.py`.
+Per-user memory coverage lives in `backend/tests/test_per_user_memory.py`.
 
 **Configuration** (`config.yaml` → `memory`):
 - `enabled` / `injection_enabled` - Master switches
-- `storage_path` - Path to memory.json
+- `storage_path` - Path to memory file (empty = `memory/global.json`)
 - `debounce_seconds` - Wait time before processing (default: 30)
 - `model_name` - LLM for updates (null = default model)
 - `max_facts` / `fact_confidence_threshold` - Fact storage limits (100 / 0.7)
 - `max_injection_tokens` - Token limit for prompt injection (2000)
+- `per_user.feishu` - Enable per-user memory for Feishu channel (default: false)
+- `cleanup.enabled` - Enable scheduled memory cleanup (default: false)
+- `cleanup.interval_hours` - Cleanup interval in hours (default: 168 = 7 days)
+- `cleanup.apply_to_global` - Whether cleanup also clears global memory (default: false)
 
 ### Reflection System (`packages/harness/deerflow/reflection/`)
 
@@ -366,7 +386,7 @@ Focused regression coverage for the updater lives in `backend/tests/test_memory_
 - `title` - Auto-title generation (enabled, max_words, max_chars, prompt_template)
 - `summarization` - Context summarization (enabled, trigger conditions, keep policy)
 - `subagents.enabled` - Master switch for subagent delegation
-- `memory` - Memory system (enabled, storage_path, debounce_seconds, model_name, max_facts, fact_confidence_threshold, injection_enabled, max_injection_tokens)
+- `memory` - Memory system (enabled, storage_path, debounce_seconds, model_name, max_facts, fact_confidence_threshold, injection_enabled, max_injection_tokens, per_user, cleanup)
 
 **`extensions_config.json`**:
 - `mcpServers` - Map of server name → config (enabled, type, command, args, env, url, headers, oauth, description)

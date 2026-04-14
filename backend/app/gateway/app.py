@@ -61,7 +61,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("No IM channels configured or channel service failed to start")
 
+        # Start memory cleanup scheduler
+        try:
+            from deerflow.agents.memory.cleanup import start_cleanup_scheduler
+
+            start_cleanup_scheduler()
+        except Exception:
+            logger.exception("Failed to start memory cleanup scheduler")
+
         yield
+
+        # Stop memory cleanup scheduler on shutdown
+        try:
+            from deerflow.agents.memory.cleanup import stop_cleanup_scheduler
+
+            stop_cleanup_scheduler()
+        except Exception:
+            logger.exception("Failed to stop memory cleanup scheduler")
 
         # Stop channel service on shutdown
         try:
